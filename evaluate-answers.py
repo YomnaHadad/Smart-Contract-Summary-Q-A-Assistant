@@ -6,12 +6,12 @@ import json
 
 load_dotenv()
 
-groq_api_key = os.getenv("GROQ_API_KEY")
+groq_api_key =  os.environ["GROQ_API_KEY"] 
 
-llm = ChatGroq(
-    model="openai/gpt-oss-120b",
-    groq_api_key=groq_api_key,
-    temperature=0
+llm = llm = ChatGroq(
+    api_key=groq_api_key,
+    model="llama-3.1-70b-versatile",
+    temperature=0,
 )
 
 import re
