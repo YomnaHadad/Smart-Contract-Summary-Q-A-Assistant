@@ -1,51 +1,81 @@
 import gradio as gr
-from build_rag import load_document, split_documents, build_vectorstore, context_prompt, instruct_llm
-from langchain.schema.output_parser import StrOutputParser
-from langchain.memory import ConversationBufferMemory
-from langchain.schema.runnable import RunnablePassthrough
-from build-rag import process_file, chat_interface, summarize_contract
+import os
+from document import load_document, split_documents
+from vector_stores import build_vectorstore
+from build_rag import chat_interface, summarize_contract
 
-# 1. Global variables to hold our data across different button clicks
-vector_db = None
-loaded_docs = None 
+# --- SHARED STATE ---
+# simple list to hold docs so it's accessible globally in the script
+state = {
+    "docs": None,
+    "vector_db": None,
+    "last_question": None,
+    "last_answer": None
+}
 
 def process_file(file):
-    global vector_db, loaded_docs
     if file is None:
         return "No file uploaded."
-    
-    loaded_docs = load_document(file.name) 
-    chunks = split_documents(loaded_docs)
-    vector_db = build_vectorstore(chunks)
-    
-    return f"Successfully processed {len(loaded_docs)} pages. Now you can summarize or chat!"
 
-def handle_summarize():
-    global loaded_docs
-    if loaded_docs is None:
-        return "Please upload and process a document first."
-    
-    return summarize_contract(loaded_docs)
+    try:
+        state["docs"] = load_document(file.name)
+        print("DOCS:", state["docs"])
+        chunks = split_documents(state["docs"])
+        print("CHUNKS:", len(chunks))
+        state["vector_db"] = build_vectorstore(chunks)
+        return f"Successfully indexed {len(state['docs'])} pages!"
+    except Exception as e:
+        return f"ERROR: {str(e)}"
 
-# --- Gradio UI Layout ---
-with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 📜 Smart Contract Assistant")
-    
-    with gr.Row():
-        with gr.Column(scale=1):
-            file_input = gr.File(label="Upload PDF or DOCX")
-            upload_btn = gr.Button("1. Process & Index")
-            summary_btn = gr.Button("2. Generate Summary")
-            summary_out = gr.Textbox(label="Contract Summary", lines=10)
-            
-        with gr.Column(scale=2):
-            gr.ChatInterface(fn=chat_interface, title="Chat with your Contract")
 
-    # 2. Corrected Event Handlers
-    # Notice we don't pass 'docs' here; the function finds 'loaded_docs' globally
-    upload_btn.click(fn=process_file, inputs=file_input, outputs=summary_out)
-    summary_btn.click(fn=handle_summarize, inputs=None, outputs=summary_out)
+def chat_func(message, history):
+    try:
+      return chat_interface(message, state["vector_db"])
+    except Exception as e:
+      return f"Error: {str(e)}"
 
-demo.launch(share=True, debug=True)
-    
+
+# SUMMARY TAB FUNCTION
+def summarize_document():
+    if state["docs"] is None:
+        return "Please upload a document first."
+
+    try:
+        summary = summarize_contract(state["docs"])
+        return summary
+    except Exception as e:
+        return f"Error summarizing: {str(e)}"
+
+
+
+# --- UI DEFINITION ---
+# Gradio 6.0
+with gr.Blocks() as demo:
+    gr.Markdown("# 📄 Smart Document RAG Assistant")
+
+    # -------- TAB 1 --------
+    with gr.Tab("1️⃣ Ingestion"):
+        file_input = gr.File(label="Upload PDF/DOCX")
+        upload_btn = gr.Button("Process Document")
+        status = gr.Textbox(label="Status")
+        upload_btn.click(process_file, inputs=file_input, outputs=status)
+
+    # -------- TAB 2 --------
+    with gr.Tab("2️⃣ Chat & Q&A"):
+        gr.ChatInterface(fn=chat_func)
+
+    # -------- TAB 3 --------
+    with gr.Tab("3️⃣ Document Summary"):
+        summary_btn = gr.Button("Generate Summary")
+        summary_output = gr.Textbox(label="Summary", lines=10)
+        summary_btn.click(summarize_document, outputs=summary_output)
+
+
+if __name__ == "__main__":
+    demo.launch(share=True, debug=True)
+
+
+
+
+
 
