@@ -1,7 +1,8 @@
+
 # - File ingestion: PDF/DOCX.
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader
+from langchain_community.document_loaders import PyMuPDFLoader, UnstructuredWordDocumentLoader
 import os
 
 #_____________________________________
@@ -23,11 +24,12 @@ def load_document(file_path):
     if ext == ".pdf":
         loader = PyMuPDFLoader(file_path)
     elif ext == ".docx":
-        loader = Docx2txtLoader(file_path)
+      loader = UnstructuredWordDocumentLoader(file_path)
     else:
         raise ValueError(f"Unsupported file type: {ext}. Use PDF or DOCX.")
 
     docs = loader.load()
     print(f"Loaded {len(docs)} page(s) from {os.path.basename(file_path)}")
     return docs
+
 
