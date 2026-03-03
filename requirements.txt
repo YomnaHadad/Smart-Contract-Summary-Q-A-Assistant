@@ -1,8 +1,11 @@
-# Core LLM & Pipeline
-langchain==0.2.11
-langchain-openai==0.1.17
-langchain-community==0.2.10
-langchain-huggingface==0.0.3
+
+# Core LangChain
+langchain==0.2.14
+langchain-core==0.2.36
+langchain-community==0.2.12
+openai==0.28
+langchain-groq==0.1.9
+
 
 # Vector Store & Embeddings
 faiss-cpu==1.8.0.post1
@@ -10,14 +13,12 @@ sentence-transformers==3.0.1
 
 # Document Parsing
 pymupdf==1.24.9
-pdfplumber==0.11.2
 python-docx==1.1.2
+docx2txt==0.8
+unstructured
 
-# API & UI
-fastapi==0.111.1
-langserve[all]==0.2.2
-gradio==4.40.0
-uvicorn==0.30.3
+# UI
+gradio==4.44.1
 
 # Utilities
 python-dotenv==1.0.1
