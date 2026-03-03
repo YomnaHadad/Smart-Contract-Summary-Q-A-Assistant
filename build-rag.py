@@ -1,21 +1,26 @@
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.output_parser import StrOutputParser
-from langchain.schema.runnable import RunnablePassthrough
-from langchain.schema.runnable import RunnableLambda
-from langchain.schema.runnable import RunnableParallel
+import os
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnableLambda
+from langchain_core.runnables import RunnableParallel
 from vector_stores import build_vectorstore
+from langchain_groq import ChatGroq
 from langchain.llms import OpenAI
 from document import load_document, split_documents
 
 
 ## Reorders longer documents to center of output text
-from langchain.document_transformers import LongContextReorder
-long_reorder = RunnableLambda(LongContextReorder().transform_documents)
+# from langchain.document_transformers import LongContextReorder
+# long_reorder = RunnableLambda(LongContextReorder().transform_documents)
 
 # API
-from google.colab import userdata
-openai_api_key = userdata.get('OPENAI_API_KEY')
-instruct_llm = OpenAI(openai_api_key=openai_api_key, model_name= "gpt-4o-mini")
+groq_api_key =  os.environ["GROQ_API_KEY"] 
+instruct_llm = ChatGroq(
+    model="openai/gpt-oss-120b",
+    groq_api_key= groq_api_key,
+    temperature=0
+)
 
 # Prompt
 prompt = ChatPromptTemplate.from_template(
@@ -30,7 +35,6 @@ vector_db = None
 
 
 def format_docs_with_metadata(docs):
-    # This helper combines the text content with its source info
     formatted = []
     for doc in docs:
         source = doc.metadata.get("source", "Unknown")
@@ -39,40 +43,55 @@ def format_docs_with_metadata(docs):
     return "\n\n---\n\n".join(formatted)
 
 
-def process_file(file):
+def process_file(file_path):
     global vector_db
-    # file.name is the path to the uploaded PDF/DOCX
-    docs = load_document(file.name)
-    chunks = split_documents(docs)
-    vector_db = build_vectorstore(chunks)
-    return "Document processed successfully! You can now ask questions."
+    try:
+        # Load the document (PDF or DOCX)
+        docs = load_document(file_path)
+        if not docs:
+            return "Error: No pages found in the document."
+
+        # Split into chunks for vector store
+        chunks = split_documents(docs)
+        if not chunks:
+            return "Error: Failed to split document into chunks."
+
+        # Build vectorstore
+        vector_db = build_vectorstore(chunks)
+        return f"Document processed successfully! {len(chunks)} chunks indexed."
+    except Exception as e:
+        return f"Error processing document: {str(e)}"
 
 
-def chat_interface(question, history):
-    if vector_db is None:
+def chat_interface(question, vector_db_local):
+    if vector_db_local is None:
         return "Please upload a document first."
-    
-    retriever = vector_db.as_retriever() 
-    rag_chain = (
-      RunnableParallel({
-        "context": retriever.as_retriever() | long_reorder | RunnableLambda(format_docs_with_metadata),
-        "question": RunnablePassthrough()
-      })
-      | prompt | instruct_llm | StrOutputParser()
-    )
-    response = rag_chain.invoke(question)
-    return response
+
+    try:
+        retriever = vector_db_local.as_retriever()
+        rag_chain = (
+            RunnableParallel({
+                "context": retriever | RunnableLambda(format_docs_with_metadata),
+                "question": RunnablePassthrough()
+            })
+            | prompt | instruct_llm | StrOutputParser()
+        )
+        response = rag_chain.invoke(question)
+        return response
+    except Exception as e:
+        return f"Error in chat: {str(e)}"
 
 
 def summarize_contract(docs):
-    summary_prompt = ChatPromptTemplate.from_template(
-        "Write a concise summary of the following legal contract. "
-        "Highlight key parties, obligations, and termination clauses."
-        "\n\nContract Content:\n{text}"
-    )
-    
-    # "Stuffing" the first few chunks for a quick summary
-    text_content = "\n".join([d.page_content for d in docs[:5]]) 
-    
-    chain = summary_prompt | instruct_llm | StrOutputParser()
-    return chain.invoke({"text": text_content})   
+    try:
+        summary_prompt = ChatPromptTemplate.from_template(
+            "Write a concise summary of the following legal contract. "
+            "Highlight key parties, obligations, and termination clauses.\n\n"
+            "Contract Content:\n{text}"
+        )
+
+        text_content = "\n".join([d.page_content for d in docs[:5]])  # first 5 chunks
+        chain = summary_prompt | instruct_llm | StrOutputParser()
+        return chain.invoke({"text": text_content})
+    except Exception as e:
+        return f"Error summarizing contract: {str(e)}"  
